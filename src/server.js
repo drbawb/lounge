@@ -184,7 +184,7 @@ function index(req, res, next) {
 	res.render("index", data);
 }
 
-function initializeClient(socket, client, generateToken, token) {
+function initializeClient(socket, client, generateToken, token, lastMessage) {
 	socket.emit("authorized");
 
 	socket.on("disconnect", function() {
@@ -348,11 +348,24 @@ function initializeClient(socket, client, generateToken, token) {
 	socket.join(client.id);
 
 	const sendInitEvent = (tokenToSend) => {
+		let networks = client.networks;
+
+		if (lastMessage > -1) {
+			// We need a deep cloned object because we are going to remove unneeded messages
+			networks = _.cloneDeep(networks);
+
+			networks.forEach((network) => {
+				network.channels.forEach((channel) => {
+					channel.messages = channel.messages.filter((m) => m.id > lastMessage);
+				});
+			});
+		}
+
 		socket.emit("init", {
 			applicationServerKey: manager.webPush.vapidKeys.publicKey,
 			pushSubscription: client.config.sessions[token],
 			active: client.lastActiveChannel,
-			networks: client.networks,
+			networks: networks,
 			token: tokenToSend
 		});
 	};
@@ -438,7 +451,7 @@ function performAuthentication(data) {
 	const socket = this;
 	let client;
 
-	const finalInit = () => initializeClient(socket, client, !!data.remember, data.token || null);
+	const finalInit = () => initializeClient(socket, client, !!data.remember, data.token || null, data.lastMessage || -1);
 
 	const initClient = () => {
 		client.ip = getClientIp(socket.request);
